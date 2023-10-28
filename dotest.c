@@ -1,7 +1,16 @@
-#include "questions.h"
+/// This is a massively-overengineered program for practising HAM licensing
+/// exam questions.
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+#if (ENABLE_GTK + 0) == 1
+#include <gtk/gtk.h>
+#endif
+
+#include "images.h"
+#include "images_gperf.h"
+#include "questions.h"
 
 static const struct data_index {
     struct question_t *pool;
@@ -21,6 +30,29 @@ static const struct data_index {
 };
 
 static const size_t QUESTIONPOOLS_SIZE = 10;
+
+
+#if (ENABLE_GTK + 0) == 1
+void display_image(const void *image_data, const size_t length, const char *title) {
+    GtkWidget* window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+    GdkPixbufLoader *loader = gdk_pixbuf_loader_new();
+    GdkPixbuf *pixbuf;
+    GtkWidget* image;
+
+    g_signal_connect(window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
+    gtk_window_set_default_size(GTK_WINDOW(window), 50, 30);
+    gtk_window_set_title(GTK_WINDOW(window), title);
+    gtk_window_set_destroy_with_parent(GTK_WINDOW(window), TRUE);
+
+    gdk_pixbuf_loader_write(loader, image_data, length, NULL);
+    gdk_pixbuf_loader_close(loader, NULL);
+    pixbuf = gdk_pixbuf_loader_get_pixbuf(loader);
+    image = gtk_image_new_from_pixbuf(pixbuf);
+    gtk_container_add(GTK_CONTAINER(window), image);
+    gtk_widget_show_all(window);
+    gtk_main();
+}
+#endif
 
 
 /// Ask for a single unsigned integer.
@@ -87,6 +119,18 @@ uint32_t test_single(struct question_t *pool, size_t index) {
     for (; incorrect_pos_now < 3; ++incorrect_pos_now)
         printf("\t%zu %s\n", incorrect_pos_now + 2, question->incorrect[incorrect_pos_now]);
     putchar('\n');
+    for (size_t i = 0; i < question->image_count; ++i) {
+        const char *filename = question->images[i];
+        const struct image_info_t *image = in_word_set(filename, strlen(filename));
+        if (image == NULL) {
+            fprintf(stderr, "Image %s not found\n", filename);
+            continue;
+        }
+        printf("Displaying image %zu length %zu\n", i + 1, image->length);
+#if (ENABLE_GTK + 0) == 1
+        display_image(image->content, image->length, filename);
+#endif
+    }
     choice = input_u16("Choice: ", 5);
     if (choice == 0)
         choice = 1;
@@ -119,6 +163,9 @@ int main(int argc, char **argv) {
         pool = strtoul(argv[1], NULL, 10);
     else
         pool = input_qb();
+#if (ENABLE_GTK + 0) == 1
+    gtk_init(NULL, NULL);
+#endif
     srand(input_u16("Random seed: ", 0xFFFF));
     offer_test(QUESTIONPOOLS[pool].pool, QUESTIONPOOLS[pool].pool_size);
     return 0;

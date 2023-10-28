@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 def escape_for_c(s):
     return s.replace("\\", "\\\\").replace("\"", "\\\"")
 
@@ -75,3 +77,10 @@ def generate_all(questions, fp):
             gen_array(questions[name], namemap[name], fp)
         else:
             print(f"Unknown name {name}")
+
+if __name__ == "__main__":
+    import sys
+    import json
+    with open(sys.argv[1], "r") as fp:
+        questions = json.load(fp)
+    generate_all(questions, open(sys.argv[2], "w"))
