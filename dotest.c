@@ -10,6 +10,7 @@
 
 #include "images.h"
 #include "images_gperf.h"
+#include "pcg.h"
 #include "questions.h"
 
 static const struct data_index {
@@ -30,7 +31,6 @@ static const struct data_index {
 };
 
 static const size_t QUESTIONPOOLS_SIZE = 10;
-
 
 #if (ENABLE_GTK + 0) == 1
 void display_image(const void *image_data, const size_t length, const char *title) {
@@ -59,10 +59,10 @@ void display_image(const void *image_data, const size_t length, const char *titl
 /// @param prompt The prompt to display.
 /// @param max The maximum value the user can enter.
 /// @return The integer.
-uint16_t input_u16(const char *prompt, uint16_t max) {
+uint64_t input_u64(const char *prompt, uint64_t max) {
     while (1) {
         char buf[10];
-        uint16_t result;
+        uint64_t result;
         printf("%s", prompt);
         fflush(stdout);
         fgets(buf, 10, stdin);
@@ -80,21 +80,20 @@ size_t input_qb(void) {
     for (size_t i = 0; i < QUESTIONPOOLS_SIZE; ++i)
         printf("%zu: %s\n", i, QUESTIONPOOLS[i].human_readable);
 
-    return input_u16("Choice: ", QUESTIONPOOLS_SIZE);
+    return (size_t) input_u64("Choice: ", QUESTIONPOOLS_SIZE);
 }
 
 /// Create a shuffled array of indices.
 /// @param size The size of the array.
 /// @return The array. Needs to be `free`d.
-size_t *random_indices(size_t size) {
+size_t *random_indices(size_t size, pcg32_random_t *rng) {
     size_t *indices = malloc(size * sizeof(size_t));
     for (size_t i = 0; i < size; ++i)
         indices[i] = i;
 
     // Fisher-Yates shuffle
     for (size_t i = size - 1; i > 0; --i) {
-        // XXX: Maybe use a better RNG?
-        size_t j = rand() % (i + 1);
+        uint32_t j = pcg32_boundedrand_r(rng, i + 1);
         size_t tmp = indices[i];
         indices[i] = indices[j];
         indices[j] = tmp;
@@ -107,8 +106,8 @@ size_t *random_indices(size_t size) {
 /// @param pool the question pool.
 /// @param index the index of the question in the pool. It must be valid.
 /// @return 1 if the user answered correctly, 0 otherwise.
-uint32_t test_single(struct question_t *pool, size_t index) {
-    size_t correct_pos = rand() % 4, incorrect_pos_now;
+uint32_t test_single(struct question_t *pool, size_t index, pcg32_random_t *rng) {
+    size_t correct_pos = pcg32_boundedrand_r(rng, 4), incorrect_pos_now;
     uint16_t choice;
     struct question_t *question = &pool[index];
     printf("%s %s\n", question->number, question->question);
@@ -131,7 +130,7 @@ uint32_t test_single(struct question_t *pool, size_t index) {
         display_image(image->content, image->length, filename);
 #endif
     }
-    choice = input_u16("Choice: ", 5);
+    choice = (uint16_t) input_u64("Choice: ", 5);
     if (choice == 0)
         choice = 1;
     putchar('\n');
@@ -145,20 +144,22 @@ uint32_t test_single(struct question_t *pool, size_t index) {
 /// Test the user on a question pool.
 /// @param pool The question pool.
 /// @param pool_size The size of the question pool.
-void offer_test(struct question_t *pool, size_t pool_size) {
+void offer_test(struct question_t *pool, size_t pool_size, pcg32_random_t *rng) {
     // Do I care about performance? Not really. Just work with cache misses.
     // Create a shuffled array of indices
-    size_t *indices = random_indices(pool_size);
+    size_t *indices = random_indices(pool_size, rng);
     uint32_t correct_count = 0, total = 0;
     for (; total < pool_size; ++total) {
-        correct_count += test_single(pool, indices[total]);
+        correct_count += test_single(pool, indices[total], rng);
         printf("Score: %d/%d = %g%%\n", correct_count, total + 1, 100.0 * correct_count / (total + 1));
         putchar('\n');
     }
+    free(indices);
 }
 
 int main(int argc, char **argv) {
     size_t pool;
+    pcg32_random_t rng;
     if (argc == 2)
         pool = strtoul(argv[1], NULL, 10);
     else
@@ -166,7 +167,8 @@ int main(int argc, char **argv) {
 #if (ENABLE_GTK + 0) == 1
     gtk_init(NULL, NULL);
 #endif
-    srand(input_u16("Random seed: ", 0xFFFF));
-    offer_test(QUESTIONPOOLS[pool].pool, QUESTIONPOOLS[pool].pool_size);
+    pcg32_srandom_r(&rng, input_u64("Random seed: ", 0xFFFF), 0);
+
+    offer_test(QUESTIONPOOLS[pool].pool, QUESTIONPOOLS[pool].pool_size, &rng);
     return 0;
 }
