@@ -3,8 +3,14 @@
 
 .PHONY: clean
 
-dotest: dotest.c images_gperf.h images.h questions.h
-	$(CC) $(CFLAGS) -DENABLE_GTK=$(ENABLE_GTK) -o $@ $< $(LDFLAGS)
+dotest: dotest.o pcg.o
+	$(CC) -o $@ $^ $(LDFLAGS)
+
+pcg.o: pcg.c pcg.h
+	$(CC) -c $(CFLAGS) -o $@ $<
+
+dotest.o: dotest.c images_gperf.h images.h questions.h pcg.h
+	$(CC) -c $(CFLAGS) -DENABLE_GTK=$(ENABLE_GTK) -o $@ $<
 
 images_gperf.h: images.gperf
 	gperf --null-strings -ntCIK filename -F ", NULL, 0" --output-file=$@ $<
@@ -28,4 +34,4 @@ questions.h: questions.json
 	./gen_data_header.py $< $@
 
 clean:
-	rm -f images_gperf.h images.h images.h.interm images.lst images.gperf questions.h dotest
+	rm -f images_gperf.h images.h images.h.interm images.lst images.gperf questions.h dotest *.o
