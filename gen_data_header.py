@@ -58,19 +58,19 @@ def generate_all(questions, fp):
     print("#include <stddef.h>", file=fp)
     print("""struct question_t {
     /// Question number
-    char *number;
+    const char * const number;
     /// Question text
-    char *question;
+    const char * const question;
     /// Correct answer
-    char *correct;
-    /// Incorrect answers
-    char *incorrect[5];
+    const char * const correct;
+    /// Incorrect answers (An mut array of 5 const pointers to const char)
+    const char * const incorrect[5];
     /// Number of incorrect answers
-    size_t incorrect_count;
+    const size_t incorrect_count;
     /// Image file names
-    char *images[5];
+    const char * const images[5];
     /// Number of images
-    size_t image_count;
+    const size_t image_count;
 };""", file=fp)
     for name in questions.keys():
         if name in namemap:
