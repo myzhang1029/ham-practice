@@ -1,5 +1,5 @@
-# Enable GTK:
-# $ make ENABLE_GTK=1 CFLAGS="$(pkg-config --cflags gtk+-3.0)" LDFLAGS="$(pkg-config --libs gtk+-3.0)"
+# Enable SDL:
+# $ make ENABLE_SDL=1 CFLAGS="-Ofast -Wall -Wextra $(pkg-config --cflags SDL2_image)" LDFLAGS="$(pkg-config --libs SDL2_image)"
 
 .PHONY: clean
 
@@ -10,7 +10,7 @@ pcg.o: pcg.c pcg.h
 	$(CC) -c $(CFLAGS) -o $@ $<
 
 dotest.o: dotest.c images_gperf.h images.h questions.h pcg.h
-	$(CC) -c $(CFLAGS) -DENABLE_GTK=$(ENABLE_GTK) -o $@ $<
+	$(CC) -c $(CFLAGS) -DENABLE_SDL=$(ENABLE_SDL) -o $@ $<
 
 images_gperf.h: images.gperf
 	gperf --null-strings -ntCIK filename -L ANSI-C -F ", NULL, 0" --output-file=$@ $<

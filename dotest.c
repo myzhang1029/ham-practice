@@ -5,12 +5,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#if (ENABLE_GTK + 0) == 1
-#include <gtk/gtk.h>
+#if (ENABLE_SDL + 0) == 1
+#include <SDL.h>
+#include <SDL_image.h>
 #endif
 
-// Don't include the images at all if we don't have GTK
-#if (ENABLE_GTK + 0) == 1
+// Don't include the images at all if we don't have SDL
+#if (ENABLE_SDL + 0) == 1
 #include "images.h"
 #include "images_gperf.h"
 #endif
@@ -36,8 +37,8 @@ static const struct data_index {
 
 static const size_t QUESTIONPOOLS_SIZE = 10;
 
-#if (ENABLE_GTK + 0) == 1
-/// Display an image with the GTK backend
+#if (ENABLE_SDL + 0) == 1
+/// Display an image with the SDL backend
 /// @param filename The filename of the image to display
 void display_image(const char *filename) {
     const struct image_info_t *image = in_word_set(filename, strlen(filename));
@@ -49,23 +50,49 @@ void display_image(const char *filename) {
     const size_t length = image->length;
     printf("Displaying image %s length %zu\n", filename, image->length);
 
-    GtkWidget* window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    GdkPixbufLoader *loader = gdk_pixbuf_loader_new();
-    g_signal_connect(window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
-    gtk_window_set_default_size(GTK_WINDOW(window), 50, 30);
-    gtk_window_set_title(GTK_WINDOW(window), filename);
-    gtk_window_set_destroy_with_parent(GTK_WINDOW(window), TRUE);
-
-    gdk_pixbuf_loader_write(loader, image_data, length, NULL);
-    gdk_pixbuf_loader_close(loader, NULL);
-    GdkPixbuf *pixbuf = gdk_pixbuf_loader_get_pixbuf(loader);
-    GtkWidget *image_widget = gtk_image_new_from_pixbuf(pixbuf);
-    gtk_container_add(GTK_CONTAINER(window), image_widget);
-    gtk_widget_show_all(window);
-    gtk_main();
+    SDL_Window *window = SDL_CreateWindow(
+        filename,
+        SDL_WINDOWPOS_UNDEFINED,
+        SDL_WINDOWPOS_UNDEFINED,
+        800, 600,
+        SDL_WINDOW_SHOWN
+    );
+    if (window == NULL) {
+        fprintf(stderr, "Could not create window: %s\n", SDL_GetError());
+        return;
+    }
+    SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+    if (renderer == NULL) {
+        fprintf(stderr, "Could not create renderer: %s\n", SDL_GetError());
+        return;
+    }
+    SDL_Surface *image_surface = IMG_Load_RW(SDL_RWFromConstMem(image_data, length), 1);
+    if (image_surface == NULL) {
+        fprintf(stderr, "Could not load image: %s\n", IMG_GetError());
+        return;
+    }
+    SDL_Texture *image_texture = SDL_CreateTextureFromSurface(renderer, image_surface);
+    if (image_texture == NULL) {
+        fprintf(stderr, "Could not create texture: %s\n", SDL_GetError());
+        return;
+    }
+    SDL_FreeSurface(image_surface);
+    while (1) {
+        SDL_Event event;
+        if (SDL_PollEvent(&event)) {
+            if (event.type == SDL_QUIT)
+                break;
+        }
+        SDL_RenderClear(renderer);
+        SDL_RenderCopy(renderer, image_texture, NULL, NULL);
+        SDL_RenderPresent(renderer);
+    }
+    SDL_DestroyTexture(image_texture);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
 }
 #else
-/// Dummy function for non-GTK builds
+/// Dummy function for non-SDL builds
 /// @param filename The filename of the image to display
 void display_image(const char *filename) {
     printf("Please open %s in your favourite image viewer.\n", filename);
@@ -221,11 +248,24 @@ int main(int argc, char **argv) {
         return 1;
     }
     --pool;
-#if (ENABLE_GTK + 0) == 1
-    gtk_init(NULL, NULL);
+#if (ENABLE_SDL + 0) == 1
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) < 0) {
+        fprintf(stderr, "Failed to initialize SDL. Exiting.\n");
+        return 1;
+    }
+    if (IMG_Init(IMG_INIT_PNG | IMG_INIT_JPG) < 0) {
+        fprintf(stderr, "Failed to initialize SDL_image. Exiting.\n");
+        SDL_Quit();
+        return 1;
+    }
 #endif
     pcg32_srandom_r(&rng, input_u64("Random seed: ", 0xFFFF), 0);
 
     offer_test(QUESTIONPOOLS[pool].pool, QUESTIONPOOLS[pool].pool_size, &rng);
+    
+#if (ENABLE_SDL + 0) == 1
+    IMG_Quit();
+    SDL_Quit();
+#endif
     return 0;
 }
