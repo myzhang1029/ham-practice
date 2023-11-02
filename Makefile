@@ -30,7 +30,7 @@ images.gperf: images.lst
 	echo "%%" >> $@
 	python3 -c "open('$@', 'a').write(''.join(f'{(y:=x.strip())},{(j:=(\"images_\"+y.replace(\"-\",\"_\").replace(\".\",\"_\")))},{j}_len\n' for x in open('$<')))"
 
-questions.h: questions.json
+questions.h: questions.json gen_data_header.py
 	./gen_data_header.py $< $@
 
 clean:

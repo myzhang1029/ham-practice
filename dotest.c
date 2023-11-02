@@ -1,5 +1,6 @@
 /// This is a massively-overengineered program for practising HAM licensing
 /// exam questions.
+#include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,8 +9,11 @@
 #include <gtk/gtk.h>
 #endif
 
+// Don't include the images at all if we don't have GTK
+#if (ENABLE_GTK + 0) == 1
 #include "images.h"
 #include "images_gperf.h"
+#endif
 #include "pcg.h"
 #include "questions.h"
 
@@ -72,28 +76,32 @@ void display_image(const char *filename) {
 /// Ask for a single unsigned integer.
 /// @param prompt The prompt to display.
 /// @param max The maximum value the user can enter.
-/// @return The integer.
+/// @return The integer. 0 is EOF or error so don't use that in choices.
 uint64_t input_u64(const char *prompt, uint64_t max) {
     while (1) {
         printf("%s", prompt);
         fflush(stdout);
         char buf[10] = {0};
-        fgets(buf, 10, stdin);
+        if (!fgets(buf, 10, stdin)) {
+            if (!feof(stdin))
+                perror("fgets");
+            return 0;
+        }
         uint64_t result = strtoul(buf, NULL, 10);
-        if (result < max)
+        if (result < max && result > 0)
             return result;
         puts("Invalid choice");
     }
 }
 
 /// Ask the user for a question pool to test.
-/// @return The index of the question pool in `QUESTIONPOOLS`.
+/// @return The index of the question pool in `QUESTIONPOOLS` plus 1.
 size_t input_qb(void) {
     puts("Which question pool? Options:");
-    for (size_t i = 0; i < QUESTIONPOOLS_SIZE; ++i)
-        printf("%zu: %s\n", i, QUESTIONPOOLS[i].human_readable);
+    for (size_t i = 1; i < QUESTIONPOOLS_SIZE + 1; ++i)
+        printf("%zu: %s\n", i, QUESTIONPOOLS[i - 1].human_readable);
 
-    return (size_t) input_u64("Choice: ", QUESTIONPOOLS_SIZE);
+    return (size_t) input_u64("Choice: ", QUESTIONPOOLS_SIZE + 1);
 }
 
 /// Create a shuffled array of indices.
@@ -156,16 +164,49 @@ void offer_test(const struct question_t *pool, const size_t pool_size, pcg32_ran
     // Create a shuffled array of indices
     const size_t *indices = random_indices(pool_size, rng);
     uint16_t correct_count = 0, total = 0;
+    size_t current_alloc = 64;
+    // Holds question numbers of incorrect answers
+    // (A mut pointer (this) to a mut pointer (the question number string) of const char)
+    // I think I mastered the spiral rule `https://c-faq.com/decl/spiral.anderson.html`
+    const char **failed_questions = (const char **) malloc(current_alloc * sizeof(const char *));
+
     for (; total < pool_size; ++total) {
         const uint16_t result = test_single(pool, indices[total], rng);
-        if (result == 2)
+        if (result == 1) {
+            /* Most likely */
+            ++correct_count;
+        }
+        else if (result == 0) {
+            if (total - correct_count >= current_alloc) {
+                current_alloc *= 2;
+                void *new_alloc = realloc(failed_questions, current_alloc * sizeof(const char *));
+                if (new_alloc == NULL) {
+                    fprintf(stderr, "Failed to allocate memory for failed questions. Exiting.\n");
+                    free((void *) failed_questions);
+                    break;
+                }
+                failed_questions = (const char **) new_alloc;
+            }
+            // If wrong at first one: total = 0, correct_count = 0
+            // If correct at first one and wrong at second one: total = 1, correct_count = 1
+            // If correct at first one and wrong at third one: total = 2, correct_count = 1
+            // Sounds correct.
+            failed_questions[total - correct_count] = pool[indices[total]].number;
+        }
+        else {
+            // Must be 2
+            assert(result == 2);
             break;
-        correct_count += result;
+        }
         printf("Score: %d/%d = %g%%\n", correct_count, total + 1, 100.0 * correct_count / (total + 1));
         putchar('\n');
     }
     free((void *) indices);
-    printf("Final score: %d/%d = %g%%\n", correct_count, total, 100.0 * correct_count / total);
+    printf("Final score: %d/%d = %g%%\nYou incorrectly answered:", correct_count, total, 100.0 * correct_count / total);
+    for (size_t i = 0; i < total - correct_count; ++i)
+        printf(" %s", failed_questions[i]);
+    putchar('\n');
+    free((void *) failed_questions);
 }
 
 int main(int argc, char **argv) {
@@ -175,6 +216,11 @@ int main(int argc, char **argv) {
         pool = strtoul(argv[1], NULL, 10);
     else
         pool = input_qb();
+    if (pool == 0 || pool > QUESTIONPOOLS_SIZE) {
+        fprintf(stderr, "Invalid question pool. Exiting.\n");
+        return 1;
+    }
+    --pool;
 #if (ENABLE_GTK + 0) == 1
     gtk_init(NULL, NULL);
 #endif
