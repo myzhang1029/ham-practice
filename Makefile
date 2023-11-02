@@ -13,7 +13,7 @@ dotest.o: dotest.c images_gperf.h images.h questions.h pcg.h
 	$(CC) -c $(CFLAGS) -DENABLE_GTK=$(ENABLE_GTK) -o $@ $<
 
 images_gperf.h: images.gperf
-	gperf --null-strings -ntCIK filename -F ", NULL, 0" --output-file=$@ $<
+	gperf --null-strings -ntCIK filename -L ANSI-C -F ", NULL, 0" --output-file=$@ $<
 
 images.h.interm: images
 	ls $< | xargs -I{} xxd -i $</{} > $@
